@@ -1,0 +1,27 @@
+{
+  "networks": [
+        {
+            "ssid": "Network1",
+            "password": "key"
+        },
+        {
+            "ssid": "Network2",
+            "password": "key"
+        }
+    ],
+  "users": [
+    {
+      "user": "limiteduser",
+      "password": "password",
+      "admin": "False"
+    },
+    {
+      "user": "admin",
+      "password": "password",
+      "admin": "True"
+    }
+  ],
+  "iot_edge_version": "1.1",
+  "generate_ssh": "False",
+  "download_path": "/tmp/raspi.img.xz"
+}
