@@ -18,7 +18,7 @@ wifis:
     dhcp4: true
     optional: true
     access-points:
-      Hedwig:
-        password: "Hell0Kitty"
-      Innovate:
-        password: "SwimUpStream"
+      network1:
+        password: "key"
+      network2:
+        password: "key"

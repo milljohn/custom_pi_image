@@ -12,12 +12,12 @@ def main():
 
     networks = [
         {
-            'ssid': 'Hedwig',
-            'password': 'Hell0Kitty'
+            'ssid': 'netork1',
+            'password': 'key'
         },
         {
-            'ssid': 'Innovate',
-            'password': 'SwimUpStream'
+            'ssid': 'network2',
+            'password': 'key'
         }
     ]
 

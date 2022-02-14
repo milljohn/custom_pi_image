@@ -18,7 +18,7 @@ def main():
     logging.debug('test')
     STDOUT = 1
 
-    fdout = os.open('output.txt', os.O_WRONLY)
+    fdout = os.open('../output.txt', os.O_WRONLY)
     os.dup2(fdout, STDOUT)
     os.execvp('ps', 'ps -a -u -x'.split())
     # not reached

@@ -28,7 +28,7 @@ def read_config(path: str):
     except Exception as e:
         error(f'Error reading {path}: {e}')
 def main():
-    config = read_config('configs.json')
+    config = read_config('../configs.json')
     # print(config)
     print(config.keys())
     for val in config:
