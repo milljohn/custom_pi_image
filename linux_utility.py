@@ -19,39 +19,48 @@ from configs import network_config, usercfg
 
 class Linux:
     def __init__(self, ubuntu=True):
-        # TODO: dictionary input rather than json file
-        if os.geteuid() != 0:
-            os.execvp('sudo', ['sudo', '-S', 'python'] + sys.argv)
-        self.password = getpass(prompt='Password: ', stream=None)
-
-        # TODO: set logging level in json
-        logging_level = os.environ.get('LOGGING_LEVEL', logging.DEBUG)
-        logging.basicConfig(format='%(asctime)s-[%(process)d]-%(levelname)s-%(message)s', level=logging_level)
 
         if 'Linux' not in platform.system():
             error(f'OS not Linux. Exiting: {platform.system()}')
-            sys.exit()
-
-        # bootstrap dev system
-        boostrap = "sudo apt-get install -y curl vim git qemu-system-arm qemu-efi qemu binfmt-support qemu-user-static qemu-utils qemu-system-common proot qemu systemd-container qemu-efi-arm qemu-efi-aarch64"
-        self.shell('sudo apt-get update')
-        self.shell(boostrap)
-
-        if ubuntu is True:
-            url = "https://cdimage.ubuntu.com/releases/20.04.2/release/ubuntu-20.04.2-preinstalled-server-arm64+raspi.img.xz"
-        else:
-            url = None
-            error(f'Ubuntu not specified')
             sys.exit(-1)
 
+        # TODO: dictionary input rather than json file
+
+        # NOTE: There is no good way around this. Either write to privlaged files using cli tools, or run as sudo.
+        # Must enter password twice
+        if os.geteuid() != 0:
+            os.execvp('sudo', ['sudo', '-S', 'venv/bin/python'] + sys.argv)
+
+        # Running as root, password not needed
+        # self.password = getpass(prompt='Password: ', stream=None)
+        self.password = True
+
         config = self.read_config('configs.json')
-        self.url = url
+        logging_level = config['logging_level']
+        # TODO: set logging level in json
+        # logging_level = os.environ.get('LOGGING_LEVEL', logging.DEBUG)
+        logging.basicConfig(format='%(asctime)s-[%(process)d]-%(levelname)s-%(message)s', level=logging_level)
+
+        # bootstrap dev system
+        info('Updating the dev environment and bootstrapping')
+        self.shell('apt-get update')
+        bootstrap = f"apt-get install -y {config['software']['bootstrap']}"
+        debug(f'bootstrap command: {bootstrap}')
+        self.shell(bootstrap)
+
+        self.linux = config['linux']
+        version = config['version']
+        self.url = self.read_config('linux.json')[self.linux][version]
         self.path = config['download_path']
         self.partitions = []
         self.boot_part = ''
         self.root_part = ''
         self.loop = ''
+        self.enable_wifi = eval(config['enable_wifi'])
+        self.enable_bluetooth = eval(config['enable_bluetooth'])
+        self.use_lcd = eval(config['use_lcd'])
 
+        # start manipulating img
         self.download()
         # TODO: fix resize
         # self.resize(400)
@@ -60,20 +69,21 @@ class Linux:
 
         self.update_wifi(config['networks'])
         self.create_users(config['users'])
+        self.update_user_cfg()
 
-        self.unmount()
-        self.cleanup()
+        # self.unmount()
+        # self.cleanup()
 
     def resize(self, size: int):
-        add_size = f'sudo dd if=/dev/zero bs=1M count={size} >> {self.decompressed_path}'
+        add_size = f'dd if=/dev/zero bs=1M count={size} >> {self.decompressed_path}'
         debug(f'add space command: {add_size}')
         self.shell(add_size)
 
-        get_size = f'sudo parted -s {self.decompressed_path} print free'
+        get_size = f'parted -s {self.decompressed_path} print free'
         size = self.shell(get_size).split('MB')[-3] + 'MB'
         debug(f'new disk size: {size}')
 
-        resize_command = f'sudo parted -s {self.decompressed_path} resizepart 2 {size}'
+        resize_command = f'parted -s {self.decompressed_path} resizepart 2 {size}'
         self.shell(resize_command)
 
     def download(self):
@@ -94,7 +104,7 @@ class Linux:
 
         if not os.path.isfile(path[:-3]):
             info(f'Decompressing {path}')
-            self.shell(f'sudo xz --decompress --keep {path}')
+            self.shell(f'xz --decompress --keep {path}')
         else:
             info(f'File exists: {path[:-3]}')
 
@@ -103,7 +113,7 @@ class Linux:
 
     def losetup(self):
         path = self.decompressed_path
-        command = f'sudo losetup --show -f -P {path}'
+        command = f'losetup --show -f -P {path}'
         self.loop = self.shell(command)
         info(f'Mounted {path} at {self.loop}')
 
@@ -122,8 +132,8 @@ class Linux:
                 sys.exit()
 
             debug(f'mounting {p} at /mnt/{part}')
-            self.shell(f'sudo mkdir -p /mnt/{part}')
-            self.shell(f'sudo mount {p} /mnt/{part}')
+            self.shell(f'mkdir -p /mnt/{part}')
+            self.shell(f'mount {p} /mnt/{part}')
 
         self.copy_file(source='/usr/bin/qemu-aarch64-static', destination=f'{self.root_part}/usr/bin')
         self.copy_file(source='/usr/bin/qemu-arm-static', destination=f'{self.root_part}/usr/bin')
@@ -132,18 +142,52 @@ class Linux:
 
         for p in self.partitions:
             debug(f'unmounting {p} at /mnt/{p[5:]}')
-            self.shell(f'sudo umount /mnt/{p[5:]}')
+            self.shell(f'umount /mnt/{p[5:]}')
         info(f'Unmounting {self.loop}')
 
     def cleanup(self):
         for p in self.partitions:
             debug(f'removing /mnt/{p[5:]}')
-            self.shell(f'sudo rm -r /mnt/{p[5:]}')
+            self.shell(f'rm -r /mnt/{p[5:]}')
 
-        command = f'sudo losetup -d {self.loop}'
+        command = f'losetup -d {self.loop}'
         debug(f'command: {command}')
         self.shell(command)
         info(f'Unmounting {self.loop}')
+
+    def update_user_cfg(self):
+        """
+        update usercfg.txt
+
+        :return: None
+        """
+        wifi = None
+        bluetooth = None
+        rotate = None
+        lcd = None
+        use_lcd = False
+        path = f'{self.boot_part}/usercfg.txt'
+
+        if not self.enable_wifi:
+            wifi = 'dtoverlay=disable-wifi'
+        if not self.enable_bluetooth:
+            bluetooth = 'dtoverlay=disable-bt'
+        if self.linux == 'ubuntu':
+            rotate = 'display_lcd_rotate=2'
+        if self.use_lcd:
+            lcd = """
+            hdmi_group=2
+            hdmi_mode=87
+            hdmi_timings=480 0 40 10 80 800 0 13 3 32 0 0 0 60 0 32000000 3
+            dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900
+            display_rotate=1
+            hdmi_drive=1
+            hdmi_force_hotplug=1
+            
+            """.strip().replace('            ', '')  # This is dumb
+
+        config = '\n'.join(filter(None, [wifi, bluetooth, rotate, lcd]))
+        self.append_file(file=path, contents=config)
 
     def update_wifi(self, networks: list):
         """
@@ -225,7 +269,7 @@ class Linux:
         try:
             if 'sudo' in command:
                 passwd = Popen(['echo', password], stdout=PIPE)
-                if '>>' in command:
+                if '>>' in command:  # This didn't work correctly
                     index = command.index('>>')
                     output = command[-1]
                     in_cmd = command[:index - 1]
@@ -275,20 +319,20 @@ class Linux:
             admin = eval(user['admin'])
             groups = ["dialout", "docker", "i2c"]
 
-            debug(f'user: {username}, passwd: {password}, admin: {admin}, groups: {groups}')
+            debug(f'Creating user: {username}, passwd: {password}, admin: {admin}, groups: {groups}')
 
             try:
                 for group in groups:
-                    make_group = f'sudo chroot {self.root_part} groupadd -f {group}'
+                    make_group = f'chroot {self.root_part} groupadd -f {group}'
                     self.shell(make_group)
 
                 if admin:
                     groups.append("sudo")
 
-                # make_group = f'sudo chroot {self.root_part} groupadd {username}'
+                make_group = f'chroot {self.root_part} groupadd -f {username}'
                 # groups.remove(username)
-                make_user = f'sudo chroot {self.root_part} useradd -m -s /bin/bash -U -G {",".join(groups)} -p {password} {username}'
-                debug(f'make user: {make_user}')
+                make_user = f'chroot {self.root_part} useradd -m -s /bin/bash -U -G {",".join(groups)} -p {password} {username}'
+                debug(f'make user command: {make_user}')
 
                 # self.shell(make_group)
                 self.shell(make_user)
@@ -297,7 +341,28 @@ class Linux:
                 error(f'Error creating user {username}: {e}')
                 sys.exit(-1)
 
-    def read_config(self, path: str):
+    def proot(self, command: str) -> str:
+        """
+        Run a command under full emulation as root.
+
+        DO NOT USE sudo
+
+
+        :param partition:
+        :param command:
+        :return: proot command
+        """
+
+        partition = self.root_part
+
+        if 'sudo' in command:
+            cmd = command.split(' ')
+            cmd.remove('sudo')
+            command = ' '.join(cmd)
+        return f'proot -q quemu-aarch64 -w / -b /bin/bash:/bin/sh -S {partition} {command}'
+        # return f'sudo proot -q quemu-aarch64 -w / -b /bin/bash:/bin/sh -S {partition} {command}'
+
+    def read_config(self, path: str) -> dict:
         """
 
         Load configuration from json file.
@@ -316,8 +381,17 @@ class Linux:
                 return json.load(f)
         except Exception as e:
             error(f'Error reading {path}: {e}')
+            sys.exit(-1)
+
+    def validate_config(self, config: dict):
+        """
+        Validate json from flask API.
+
+        :param config:
+        :return:
+        """
+        pass
 
 
 if __name__ == '__main__':
     linux = Linux()
-

@@ -16,12 +16,27 @@
       "admin": "False"
     },
     {
-      "user": "admin",
+      "user": "adminuser",
       "password": "password",
       "admin": "True"
     }
   ],
+  "enable_wifi": "False",
+  "enable_bluetooth": "False",
+  "use_lcd": "True",
+  "rotate_lcd": "True",
   "iot_edge_version": "1.1",
   "generate_ssh": "False",
-  "download_path": "/tmp/raspi.img.xz"
+  "download_path": "/tmp/raspi.img.xz",
+  "linux": "ubuntu",
+  "version": "20.04",
+  "logging_level": "DEBUG",
+  "software": {
+    "bootstrap": "curl vim git qemu-system-arm qemu-efi qemu binfmt-support qemu-user-static qemu-utils qemu-system-common proot qemu systemd-container qemu-efi-arm qemu-efi-aarch64",
+    "iot_edge": {
+      "version": "",
+      "url": "",
+      "packages": ""
+    }
+  }
 }

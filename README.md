@@ -5,9 +5,11 @@ This downloads an image for a Raspberry Pi and makes a custom image that can be 
 Tested on Ubuntu 20.04  
 
 ## Current Version
-Reads from configs.json and configs.py
+Reads from configs.json, linux.json and configs.py
 
-configs.json contains most user variables.
+configs.json contains user input
+
+linux.json contains the links for various linux distros for easy maintenance.
 
 configs.py contains system configuration, such as usercfg.txt and netconfig.
 
